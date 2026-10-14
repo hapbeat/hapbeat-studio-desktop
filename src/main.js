@@ -7,12 +7,14 @@
 //   - the Hapbeat Helper, bundled and started with the app (no Python / pipx)
 //   - a chooser for USB serial ports (Web Serial)
 //   - updates of the app itself (when the bundled helper or this shell changes)
+//   - what the PC plays (Windows loopback) for Studio's "PC sound → Hapbeat" button
 
 const path = require('node:path')
 const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require('electron')
 const { HelperProcess, DEFAULT_PORT } = require('./helper')
 const { SerialGrants, choosePort } = require('./serial')
 const { resolveStudioUrl, isStudioOrigin, isExternalWebUrl } = require('./urls')
+const { isDisplayCaptureRequest, systemAudioGrant } = require('./systemAudio')
 const { setLocale, t } = require('./i18n')
 const updater = require('./updater')
 
@@ -73,7 +75,8 @@ function setupSession(ses) {
 
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
     const origin = details?.requestingUrl || webContents?.getURL()
-    callback(isStudioOrigin(origin, studioUrl) && STUDIO_PERMISSIONS.has(permission))
+    callback(isStudioOrigin(origin, studioUrl)
+      && (STUDIO_PERMISSIONS.has(permission) || isDisplayCaptureRequest(permission, details)))
   })
   ses.setPermissionCheckHandler((_webContents, permission, requestingOrigin) =>
     isStudioOrigin(requestingOrigin, studioUrl) && STUDIO_PERMISSIONS.has(permission))
@@ -94,6 +97,12 @@ function setupSession(ses) {
         callback(portId)
       })
       .catch(() => callback(''))
+  })
+
+  // PC sound → Hapbeat: Studio's getDisplayMedia (from a click) gets the system audio
+  // without a picker (see systemAudio.js); anything else is refused.
+  ses.setDisplayMediaRequestHandler((request, callback) => {
+    callback(systemAudioGrant(request, studioUrl))
   })
 }
 

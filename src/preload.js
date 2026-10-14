@@ -7,7 +7,12 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('hapbeatDesktop', {
   shell: 'electron',
   /** Raised when this API changes; Studio checks it before using newer calls. */
-  apiVersion: 1,
+  apiVersion: 2,
+  /**
+   * (2) getDisplayMedia({ video, audio }) from a click returns what the PC plays
+   * (system audio, no picker) plus Studio's own page as the video track to stop.
+   */
+  systemAudio: process.platform === 'win32',
   /** { appVersion, platform, helper } */
   getInfo: () => ipcRenderer.invoke('desktop:info'),
   helper: {

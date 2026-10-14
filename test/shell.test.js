@@ -9,6 +9,7 @@ const path = require('node:path')
 const { resolveStudioUrl, isStudioOrigin, isExternalWebUrl } = require('../src/urls')
 const { SerialGrants, choosePort, sortPorts, usbId, isHapbeatPort } = require('../src/serial')
 const { HelperProcess, isPortOpen, parseStartLine } = require('../src/helper')
+const { isDisplayCaptureRequest, systemAudioGrant } = require('../src/systemAudio')
 
 test('Studio URL: production by default, marked as the desktop shell', () => {
   const url = resolveStudioUrl({})
@@ -37,6 +38,33 @@ test('only the Studio origin is trusted; web links go to the browser', () => {
   assert.ok(isExternalWebUrl('https://devtools.hapbeat.com/docs/'))
   assert.ok(!isExternalWebUrl('file:///c:/windows/system32/calc.exe'))
   assert.ok(!isExternalWebUrl('javascript:alert(1)'))
+})
+
+test('PC sound: system audio only for a click on the Studio page, on Windows', () => {
+  const studio = resolveStudioUrl({})
+  const frame = { url: 'https://studio.hapbeat.com/?shell=desktop#devices', parent: null }
+  const ask = (over = {}) => ({
+    frame, securityOrigin: 'https://studio.hapbeat.com', audioRequested: true, videoRequested: true, userGesture: true, ...over,
+  })
+  assert.deepEqual(systemAudioGrant(ask(), studio, 'win32'), { video: frame, audio: 'loopback' })
+  assert.equal(systemAudioGrant(ask(), studio, 'darwin'), null)
+  assert.equal(systemAudioGrant(ask({ userGesture: false }), studio, 'win32'), null)
+  assert.equal(systemAudioGrant(ask({ audioRequested: false }), studio, 'win32'), null)
+  assert.equal(systemAudioGrant(ask({ securityOrigin: 'https://evil.example' }), studio, 'win32'), null)
+  assert.equal(systemAudioGrant(ask({ frame: { url: 'https://evil.example/', parent: null } }), studio, 'win32'), null)
+  assert.equal(systemAudioGrant(ask({ frame: { ...frame, parent: {} } }), studio, 'win32'), null)
+  assert.equal(systemAudioGrant(ask({ frame: null }), studio, 'win32'), null)
+  const destroyed = { parent: null, get url() { throw new Error('destroyed') } }
+  assert.equal(systemAudioGrant(ask({ frame: destroyed }), studio, 'win32'), null)
+  // The 'media' permission getDisplayMedia asks first (no media types); camera / mic stay refused.
+  const media = { isMainFrame: true, mediaTypes: [], requestingUrl: 'https://studio.hapbeat.com/' }
+  assert.ok(isDisplayCaptureRequest('media', media, 'win32'))
+  assert.ok(!isDisplayCaptureRequest('media', media, 'darwin'))
+  assert.ok(!isDisplayCaptureRequest('media', { ...media, mediaTypes: ['audio'] }, 'win32'))
+  assert.ok(!isDisplayCaptureRequest('media', { ...media, mediaTypes: ['video'] }, 'win32'))
+  assert.ok(!isDisplayCaptureRequest('media', { ...media, isMainFrame: false }, 'win32'))
+  assert.ok(!isDisplayCaptureRequest('media', {}, 'win32'))
+  assert.ok(!isDisplayCaptureRequest('geolocation', media, 'win32'))
 })
 
 test('USB ids: decimal strings, hex and numbers', () => {
