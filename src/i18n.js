@@ -12,6 +12,9 @@ const MESSAGES = {
   'serial.hapbeat': { ja: 'Hapbeat', en: 'Hapbeat' },
   'serial.unknown': { ja: 'USB シリアル機器', en: 'USB serial device' },
   'common.cancel': { ja: 'キャンセル', en: 'Cancel' },
+  'unload.message': { ja: '保存していない変更があります。', en: 'There are unsaved changes.' },
+  'unload.detail': { ja: '閉じると、保存していない変更は失われます。', en: 'Closing discards the unsaved changes.' },
+  'unload.leave': { ja: '保存せずに閉じる', en: 'Close without saving' },
   'common.ok': { ja: 'OK', en: 'OK' },
   'update.ready.message': { ja: '新しいバージョン {version} の準備ができました。', en: 'Version {version} is ready.' },
   'update.ready.detail': {

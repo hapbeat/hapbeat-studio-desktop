@@ -14,6 +14,9 @@ function getUpdater() {
   if (!autoUpdater) {
     autoUpdater = require('electron-updater').autoUpdater
     autoUpdater.autoDownload = true
+    // Stable releases only. (A development build such as 0.1.0-d1 would otherwise look
+    // only for releases of its own prerelease channel "d1" and never update.)
+    autoUpdater.allowPrerelease = false
     autoUpdater.autoInstallOnAppQuit = true
     autoUpdater.on('update-downloaded', (info) => {
       readyVersion = info.version
@@ -34,7 +37,8 @@ async function askRestart(version) {
     message: t('update.ready.message', { version }),
     detail: t('update.ready.detail'),
     buttons: [t('update.restart'), t('update.later')],
-    defaultId: 0,
+    // "Later" by default: Enter must not restart in the middle of a firmware write.
+    defaultId: 1,
     cancelId: 1,
     noLink: true,
   })

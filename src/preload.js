@@ -6,10 +6,12 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('hapbeatDesktop', {
   shell: 'electron',
+  /** Raised when this API changes; Studio checks it before using newer calls. */
+  apiVersion: 1,
   /** { appVersion, platform, helper } */
   getInfo: () => ipcRenderer.invoke('desktop:info'),
   helper: {
-    /** { state, source, version, pid, port, logFile, error } */
+    /** { state, source, version, port, error } */
     status: () => ipcRenderer.invoke('desktop:helper-status'),
     restart: () => ipcRenderer.invoke('desktop:helper-restart'),
     openLogFolder: () => ipcRenderer.invoke('desktop:open-log-folder'),

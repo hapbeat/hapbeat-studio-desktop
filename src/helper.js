@@ -4,7 +4,8 @@
 // Studio talks to the helper on ws://localhost:7703 exactly as in the browser. When
 // something already listens there (a pipx-installed helper, or another copy of the
 // app), the app uses it and starts nothing; if that one goes away, the bundled helper
-// takes over. The bundled helper stops when the app quits.
+// takes over. The bundled helper stops when the app quits; if the app is killed,
+// Windows ends it too (Node starts children in a job object closed with the app).
 
 const { spawn } = require('node:child_process')
 const { EventEmitter } = require('node:events')
@@ -56,17 +57,17 @@ class HelperProcess extends EventEmitter {
     this.stopping = false
     this.restartTimes = []
     this.watchTimer = null
+    this.ensuring = null
     this.state = {
       state: 'stopped', // starting | running | external | stopped | crashed | missing
       source: null, // 'bundled' | 'external'
       version: null,
-      pid: null,
       port,
-      logFile: this.logFile,
       error: null,
     }
   }
 
+  /** What Studio may see (no paths or process ids). */
   status() {
     return { ...this.state }
   }
@@ -80,19 +81,29 @@ class HelperProcess extends EventEmitter {
   async start() {
     this.stopping = false
     await this.ensureRunning()
-    if (!this.watchTimer) {
+    if (!this.watchTimer && !this.stopping) {
       this.watchTimer = setInterval(() => void this.watch(), WATCH_INTERVAL_MS)
     }
   }
 
-  async ensureRunning() {
-    if (this.child) return
+  /** One check-and-start at a time: two overlapping calls would both see a free port and spawn twice. */
+  ensureRunning() {
+    if (!this.ensuring) {
+      this.ensuring = this.doEnsureRunning().finally(() => {
+        this.ensuring = null
+      })
+    }
+    return this.ensuring
+  }
+
+  async doEnsureRunning() {
+    if (this.child || this.stopping) return
     if (await isPortOpen(this.port)) {
-      this.setState({ state: 'external', source: 'external', version: null, pid: null, error: null })
+      this.setState({ state: 'external', source: 'external', version: null, error: null })
       return
     }
     if (!fs.existsSync(this.exePath)) {
-      this.setState({ state: 'missing', source: null, pid: null, error: `not found: ${this.exePath}` })
+      this.setState({ state: 'missing', source: null, error: 'bundled helper not found' })
       return
     }
     this.spawnBundled()
@@ -101,14 +112,22 @@ class HelperProcess extends EventEmitter {
   spawnBundled() {
     this.openLog()
     this.log(`--- starting ${this.exePath} (port ${this.port}) ---`)
-    const child = spawn(this.exePath, ['start', '--no-update-check', '--port', String(this.port)], {
-      cwd: path.dirname(this.exePath),
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
-    })
+    let child
+    try {
+      child = spawn(this.exePath, ['start', '--no-update-check', '--port', String(this.port)], {
+        cwd: path.dirname(this.exePath),
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
+      })
+    } catch (err) {
+      // e.g. blocked by security software (spawn UNKNOWN / EPERM).
+      this.log(`spawn failed: ${err.message}`)
+      this.setState({ state: 'crashed', source: 'bundled', error: err.message })
+      return
+    }
     this.child = child
-    this.setState({ state: 'starting', source: 'bundled', version: null, pid: child.pid ?? null, error: null })
+    this.setState({ state: 'starting', source: 'bundled', version: null, error: null })
 
     const onData = (chunk) => {
       const text = chunk.toString('utf8')
@@ -126,8 +145,12 @@ class HelperProcess extends EventEmitter {
     child.stdout.on('data', onData)
     child.stderr.on('data', onData)
     child.once('error', (err) => {
-      this.log(`spawn error: ${err.message}`)
-      this.setState({ error: err.message })
+      this.log(`helper process error: ${err.message}`)
+      // Never started: no 'exit' will follow, so release it here.
+      if (this.child === child && child.pid === undefined) {
+        this.child = null
+        this.setState({ state: 'crashed', error: err.message })
+      }
     })
     child.once('exit', (code, signal) => this.onExit(child, code, signal))
     void this.waitReady(child)
@@ -149,37 +172,35 @@ class HelperProcess extends EventEmitter {
     this.child = null
     this.log(`--- helper exited (code ${code}, signal ${signal}) ---`)
     if (this.stopping) {
-      this.setState({ state: 'stopped', pid: null })
+      this.setState({ state: 'stopped' })
       return
     }
     const now = Date.now()
     this.restartTimes = this.restartTimes.filter((t) => now - t < RESTART_WINDOW_MS)
     if (this.restartTimes.length >= MAX_RESTARTS) {
-      this.setState({ state: 'crashed', pid: null, error: `exited with code ${code}` })
+      this.setState({ state: 'crashed', error: `exited with code ${code}` })
       return
     }
     this.restartTimes.push(now)
-    this.setState({ state: 'starting', pid: null, error: `exited with code ${code}` })
-    setTimeout(() => {
-      if (!this.stopping) void this.ensureRunning()
-    }, RESTART_DELAY_MS)
+    this.setState({ state: 'starting', error: `exited with code ${code}` })
+    setTimeout(() => void this.ensureRunning(), RESTART_DELAY_MS)
   }
 
   /** Adopted helper went away → start ours. Ours is handled by its exit event. */
   async watch() {
-    if (this.stopping || this.child) return
+    if (this.stopping || this.child || this.ensuring) return
     if (this.state.state === 'external' && !(await isPortOpen(this.port))) {
       this.log('external helper is gone — starting the bundled helper')
       await this.ensureRunning()
     }
   }
 
-  /** Restart from the app's helper panel. Clears a "crashed" state. */
+  /** Restart from the app's panel (bundled helper only). Clears a "crashed" state. */
   async restart() {
+    if (this.state.state === 'external') return this.status()
     this.restartTimes = []
-    if (this.child) {
-      await this.kill()
-    }
+    if (this.ensuring) await this.ensuring
+    await this.kill()
     this.stopping = false
     await this.ensureRunning()
     return this.status()
@@ -199,11 +220,17 @@ class HelperProcess extends EventEmitter {
     })
   }
 
+  /** True while the bundled helper process is running or starting. */
+  isBundledRunning() {
+    return this.child !== null || this.ensuring !== null
+  }
+
   /** App quit: stop the bundled helper (an adopted one is left running). */
   async stop() {
     this.stopping = true
     if (this.watchTimer) clearInterval(this.watchTimer)
     this.watchTimer = null
+    if (this.ensuring) await this.ensuring
     await this.kill()
     this.closeLog()
   }
@@ -215,7 +242,12 @@ class HelperProcess extends EventEmitter {
       if (fs.existsSync(this.logFile) && fs.statSync(this.logFile).size > LOG_ROTATE_BYTES) {
         fs.renameSync(this.logFile, path.join(this.logDir, 'helper.old.log'))
       }
-      this.logStream = fs.createWriteStream(this.logFile, { flags: 'a' })
+      const stream = fs.createWriteStream(this.logFile, { flags: 'a' })
+      // A locked or unwritable log must not take the app down: just stop logging.
+      stream.on('error', () => {
+        if (this.logStream === stream) this.logStream = null
+      })
+      this.logStream = stream
     } catch {
       this.logStream = null
     }

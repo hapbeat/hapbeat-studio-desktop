@@ -40,7 +40,9 @@ npm run dist                  # installer → release/
 2. Push the tag `v<version>`. CI builds the installer into a draft GitHub Release.
 3. Check the installer on a PC with a Hapbeat, then publish the draft. Installed apps update from published releases only.
 
-A Studio change never needs a release of this app. Release it when the bundled helper or the app itself changes.
+A Studio change needs no release of this app, with one exception: when Studio starts to need a newer helper (`MIN_HELPER_VERSION` in hapbeat-studio `src/config/helperCompat.ts`) than the app bundles, release the app with that helper and publish it **before** deploying Studio. Otherwise release only when the bundled helper or the app itself changes.
+
+Only `vX.Y.Z` tags are built. Development versions (`0.1.1-d1`) stay local.
 
 ## License
 

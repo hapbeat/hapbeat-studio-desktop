@@ -18,6 +18,12 @@ test('Studio URL: production by default, marked as the desktop shell', () => {
   assert.equal(dev.origin, 'http://localhost:5175')
   assert.equal(dev.searchParams.get('x'), '1')
   assert.throws(() => resolveStudioUrl({ HAPBEAT_STUDIO_URL: 'file:///c:/x.html' }))
+  // An installed app follows the override only to hapbeat.com or this PC.
+  const packaged = { packaged: true }
+  assert.equal(resolveStudioUrl({ HAPBEAT_STUDIO_URL: 'https://evil.example/' }, packaged).origin, 'https://studio.hapbeat.com')
+  assert.equal(resolveStudioUrl({ HAPBEAT_STUDIO_URL: 'http://studio.hapbeat.com/' }, packaged).origin, 'https://studio.hapbeat.com')
+  assert.equal(resolveStudioUrl({ HAPBEAT_STUDIO_URL: 'https://next.studio.hapbeat.com/' }, packaged).origin, 'https://next.studio.hapbeat.com')
+  assert.equal(resolveStudioUrl({ HAPBEAT_STUDIO_URL: 'http://localhost:5173/' }, packaged).origin, 'http://localhost:5173')
 })
 
 test('only the Studio origin is trusted; web links go to the browser', () => {
@@ -55,6 +61,7 @@ test('chooser: a single Hapbeat is taken without asking; otherwise the user pick
   let asked = 0
   const dialog = { showMessageBox: async (_win, opts) => { asked++; return { response: opts.buttons.length - 1 } } }
   assert.equal(await choosePort(dialog, null, [hapbeat]), 'a')
+  assert.equal(await choosePort(dialog, null, [bluetooth, hapbeat]), 'a') // Bluetooth COM ports do not count
   assert.equal(asked, 0)
   assert.equal(await choosePort(dialog, null, [hapbeat, cp210x]), '') // cancelled
   assert.equal(asked, 1)

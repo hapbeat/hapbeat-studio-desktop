@@ -9,7 +9,6 @@
 //   - updates of the app itself (when the bundled helper or this shell changes)
 
 const path = require('node:path')
-const { pathToFileURL } = require('node:url')
 const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require('electron')
 const { HelperProcess, DEFAULT_PORT } = require('./helper')
 const { SerialGrants, choosePort } = require('./serial')
@@ -20,7 +19,15 @@ const updater = require('./updater')
 const DOCS_URL = 'https://devtools.hapbeat.com/docs/tools/studio/initial-setup/'
 const OFFLINE_PAGE = path.join(__dirname, 'offline.html')
 
-const studioUrl = resolveStudioUrl()
+// What Studio may use (asked or checked). Studio is our own page; nothing else gets any.
+const STUDIO_PERMISSIONS = new Set([
+  'serial', 'fileSystem', 'clipboard-read', 'clipboard-sanitized-write', 'notifications',
+  'fullscreen', 'pointerLock', 'persistent-storage', 'storage-access', 'top-level-storage-access',
+  // ws://localhost:7703 (the helper) from the https Studio page.
+  'local-network-access', 'local-network', 'loopback-network',
+])
+
+const studioUrl = resolveStudioUrl(process.env, { packaged: app.isPackaged })
 let mainWindow = null
 let helper = null
 
@@ -41,10 +48,6 @@ function bundledHelperPath() {
     ? path.join(process.resourcesPath, 'helper')
     : path.join(__dirname, '..', 'helper', 'dist', 'hapbeat-helper')
   return path.join(base, 'hapbeat-helper.exe')
-}
-
-function isTrustedPage(url) {
-  return isStudioOrigin(url, studioUrl) || url.startsWith(pathToFileURL(OFFLINE_PAGE).href)
 }
 
 async function onReady() {
@@ -68,17 +71,12 @@ async function onReady() {
 function setupSession(ses) {
   const grants = new SerialGrants(path.join(app.getPath('userData'), 'serial-grants.json'))
 
-  // Studio is our own page; it gets what Chrome would let it ask for. Nothing else does.
-  const REQUESTABLE = new Set([
-    'serial', 'fileSystem', 'clipboard-read', 'clipboard-sanitized-write', 'fullscreen',
-    'pointerLock', 'storage-access', 'top-level-storage-access', 'notifications',
-  ])
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
     const origin = details?.requestingUrl || webContents?.getURL()
-    callback(isStudioOrigin(origin, studioUrl) && REQUESTABLE.has(permission))
+    callback(isStudioOrigin(origin, studioUrl) && STUDIO_PERMISSIONS.has(permission))
   })
-  ses.setPermissionCheckHandler((_webContents, _permission, requestingOrigin) =>
-    isStudioOrigin(requestingOrigin, studioUrl))
+  ses.setPermissionCheckHandler((_webContents, permission, requestingOrigin) =>
+    isStudioOrigin(requestingOrigin, studioUrl) && STUDIO_PERMISSIONS.has(permission))
 
   // Web Serial: ports chosen once stay usable across launches (as in Chrome).
   ses.setDevicePermissionHandler((details) =>
@@ -89,17 +87,19 @@ function setupSession(ses) {
     event.preventDefault()
     if (!isStudioOrigin(webContents.getURL(), studioUrl)) return callback('')
     const win = BrowserWindow.fromWebContents(webContents) || mainWindow
-    void choosePort(dialog, win, portList).then((portId) => {
-      const port = portList.find((p) => p.portId === portId)
-      if (port) grants.add(port)
-      callback(portId)
-    })
+    choosePort(dialog, win, portList)
+      .then((portId) => {
+        const port = portList.find((p) => p.portId === portId)
+        if (port) grants.add(port)
+        callback(portId)
+      })
+      .catch(() => callback(''))
   })
 }
 
 function setupIpc() {
   const guard = (handler) => (event, ...args) => {
-    if (!isTrustedPage(event.senderFrame?.url || '')) throw new Error('not allowed')
+    if (!isStudioOrigin(event.senderFrame?.url || '', studioUrl)) throw new Error('not allowed')
     return handler(event, ...args)
   }
   ipcMain.handle('desktop:info', guard(() => ({
@@ -111,6 +111,13 @@ function setupIpc() {
   ipcMain.handle('desktop:helper-restart', guard(() => helper.restart()))
   ipcMain.handle('desktop:open-log-folder', guard(() => shell.openPath(app.getPath('logs'))))
   ipcMain.handle('desktop:check-updates', guard(() => updater.checkForUpdates()))
+}
+
+function showOffline(error) {
+  if (!mainWindow) return
+  void mainWindow.loadFile(OFFLINE_PAGE, {
+    query: { target: studioUrl.href, error, lang: app.getLocale() },
+  })
 }
 
 function createWindow() {
@@ -137,25 +144,32 @@ function createWindow() {
   mainWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
     // -3 = aborted (a navigation replaced this one), not a failure.
     if (!isMainFrame || code === -3 || !isStudioOrigin(url, studioUrl)) return
-    void mainWindow.loadFile(OFFLINE_PAGE, {
-      query: { target: studioUrl.href, error: `${description} (${code})`, lang: app.getLocale() },
-    })
+    showOffline(`${description} (${code})`)
   })
+  // A network that redirects elsewhere (a hotel / venue sign-in page) is not Studio.
+  mainWindow.webContents.on('will-redirect', (details) => {
+    if (!details.isMainFrame || isStudioOrigin(details.url, studioUrl)) return
+    details.preventDefault()
+    showOffline(new URL(details.url).host)
+  })
+  // Closing the main window ends the app, pop-outs included.
   mainWindow.on('closed', () => {
     mainWindow = null
+    app.quit()
   })
   void mainWindow.loadURL(studioUrl.href)
 }
 
-// Every window (the main one and Studio's pop-outs) stays on Studio; other links
-// open in the default browser.
 app.on('web-contents-created', (_event, contents) => {
-  contents.on('will-navigate', (event, url) => {
-    if (isTrustedPage(url)) return
-    event.preventDefault()
-    if (isExternalWebUrl(url)) void shell.openExternal(url)
+  // Every window (the main one and Studio's pop-outs) stays on Studio; other links
+  // open in the default browser.
+  contents.on('will-navigate', (details) => {
+    if (isStudioOrigin(details.url, studioUrl)) return
+    details.preventDefault()
+    if (isExternalWebUrl(details.url)) void shell.openExternal(details.url)
   })
   contents.setWindowOpenHandler(({ url }) => {
+    // Studio's pop-outs: window.open('', name) and fills it in, or a page of its own.
     if (url === 'about:blank' || url === '' || isStudioOrigin(url, studioUrl)) {
       return {
         action: 'allow',
@@ -168,6 +182,22 @@ app.on('web-contents-created', (_event, contents) => {
     }
     if (isExternalWebUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+  // Studio asks before discarding unsaved edits (beforeunload). A browser shows its
+  // own "Leave site?" prompt; Electron leaves that to the app.
+  contents.on('will-prevent-unload', (event) => {
+    const win = BrowserWindow.fromWebContents(contents)
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      title: 'Hapbeat Studio',
+      message: t('unload.message'),
+      detail: t('unload.detail'),
+      buttons: [t('unload.leave'), t('common.cancel')],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    })
+    if (choice === 0) event.preventDefault() // ignore beforeunload and close
   })
 })
 
@@ -213,13 +243,25 @@ function buildMenu() {
   ])
 }
 
-let quitting = false
-app.on('before-quit', (event) => {
-  if (quitting || !helper) return
-  // Stop the bundled helper before exiting so its ports are free for the next launch.
+// The bundled helper stops once every window has closed (a window kept open by
+// unsaved edits cancels the quit before anything is stopped). Its ports and files
+// are then free for the next launch or an update.
+let helperStopped = false
+app.on('will-quit', (event) => {
+  if (helperStopped || !helper) return
+  if (!helper.isBundledRunning()) {
+    // Nothing of ours to wait for (an adopted helper keeps running).
+    helperStopped = true
+    void helper.stop()
+    return
+  }
   event.preventDefault()
-  quitting = true
-  void helper.stop().finally(() => app.quit())
+  void helper.stop().finally(() => {
+    helperStopped = true
+    // Quit again on a later turn: a quit requested while this will-quit is still
+    // being handled is ignored, and the app would stay open with no window.
+    setTimeout(() => app.quit(), 0)
+  })
 })
 
 app.on('window-all-closed', () => app.quit())

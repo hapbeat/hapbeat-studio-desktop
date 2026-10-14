@@ -84,9 +84,15 @@ class SerialGrants {
   }
 }
 
+/** A port of a USB device (Bluetooth / built-in COM ports have no USB vendor id). */
+function isUsbPort(port) {
+  return usbId(port.vendorId) !== null
+}
+
 /**
  * Ask which port to use. Resolves the chosen portId, or '' when cancelled / none.
- * One port that is a Hapbeat is chosen without asking (the common USB setup case).
+ * When the only USB serial device is one Hapbeat, it is chosen without asking (the
+ * common USB setup case); Bluetooth / built-in COM ports do not count.
  */
 async function choosePort(dialog, win, portList) {
   const ports = sortPorts(portList || [])
@@ -101,7 +107,8 @@ async function choosePort(dialog, win, portList) {
     })
     return ''
   }
-  if (ports.length === 1 && isHapbeatPort(ports[0])) return ports[0].portId
+  const usb = ports.filter(isUsbPort)
+  if (usb.length === 1 && isHapbeatPort(usb[0])) return usb[0].portId
   const shown = ports.slice(0, 8)
   const buttons = [...shown.map(portLabel), t('common.cancel')]
   const { response } = await dialog.showMessageBox(win, {
@@ -111,7 +118,8 @@ async function choosePort(dialog, win, portList) {
     buttons,
     defaultId: 0,
     cancelId: buttons.length - 1,
-    noLink: true,
+    // Windows shows the ports as a vertical list of command links.
+    noLink: false,
   })
   return response < shown.length ? shown[response].portId : ''
 }
