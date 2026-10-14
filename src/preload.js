@@ -1,0 +1,25 @@
+'use strict'
+// The only bridge between Studio (web page) and the app. Studio checks for
+// `window.hapbeatDesktop` to show its desktop layout and the helper panel.
+
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('hapbeatDesktop', {
+  shell: 'electron',
+  /** { appVersion, platform, helper } */
+  getInfo: () => ipcRenderer.invoke('desktop:info'),
+  helper: {
+    /** { state, source, version, pid, port, logFile, error } */
+    status: () => ipcRenderer.invoke('desktop:helper-status'),
+    restart: () => ipcRenderer.invoke('desktop:helper-restart'),
+    openLogFolder: () => ipcRenderer.invoke('desktop:open-log-folder'),
+    /** Called on every helper state change; returns an unsubscribe function. */
+    onStatus: (callback) => {
+      const listener = (_event, status) => callback(status)
+      ipcRenderer.on('desktop:helper-status', listener)
+      return () => ipcRenderer.removeListener('desktop:helper-status', listener)
+    },
+  },
+  /** { state: 'dev' | 'none' | 'downloading' | 'downloaded' | 'error', version?, error? } */
+  checkForUpdates: () => ipcRenderer.invoke('desktop:check-updates'),
+})

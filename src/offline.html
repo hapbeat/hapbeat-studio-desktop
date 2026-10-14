@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Hapbeat Studio</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; height: 100vh; display: grid; place-items: center; background: #1a1a2e; color: #e6e6f0;
+    font: 14px/1.7 "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif; }
+  main { max-width: 460px; padding: 0 24px; text-align: center; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  p { margin: 0 0 20px; color: #b8b8cc; }
+  button { font: inherit; padding: 8px 22px; border-radius: 6px; border: 1px solid #7c5cbf; background: #7c5cbf; color: #fff; cursor: pointer; }
+  button:hover { background: #8e70d0; }
+  .detail { margin-top: 16px; font-size: 12px; color: #7d7d96; min-height: 1.7em; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title"></h1>
+  <p id="body"></p>
+  <button id="retry" type="button"></button>
+  <div class="detail" id="detail"></div>
+</main>
+<script>
+  const params = new URLSearchParams(location.search)
+  const target = params.get('target')
+  const ja = (params.get('lang') || navigator.language || '').toLowerCase().startsWith('ja')
+  const text = ja
+    ? { title: 'Studio を読み込めませんでした', body: 'Hapbeat Studio の画面はインターネットから読み込みます。接続を確認して、もう一度お試しください。', retry: '再読み込み', auto: '接続を待っています…' }
+    : { title: 'Studio could not be loaded', body: 'Hapbeat Studio loads its screens from the internet. Check your connection and try again.', retry: 'Reload', auto: 'Waiting for a connection…' }
+  document.getElementById('title').textContent = text.title
+  document.getElementById('body').textContent = text.body
+  document.getElementById('retry').textContent = text.retry
+  document.getElementById('detail').textContent = params.get('error') || ''
+  const go = () => { if (target) location.href = target }
+  document.getElementById('retry').addEventListener('click', go)
+  // Come back by itself once the network returns.
+  window.addEventListener('online', go)
+  setInterval(() => { if (navigator.onLine) { document.getElementById('detail').textContent = text.auto; go() } }, 15000)
+</script>
+</body>
+</html>

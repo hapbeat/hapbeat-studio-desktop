@@ -1,0 +1,64 @@
+{
+  "name": "hapbeat-studio-desktop",
+  "productName": "Hapbeat Studio",
+  "version": "0.1.0-d1",
+  "description": "Hapbeat Studio for Windows: the online Studio in an app window, with the Hapbeat Helper built in",
+  "main": "src/main.js",
+  "author": "Hapbeat <yus988@hapbeat.com>",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "build:helper": "powershell -NoProfile -ExecutionPolicy Bypass -File helper/build-helper.ps1",
+    "build:icon": "electron scripts/make-icon.cjs",
+    "dist:dir": "electron-builder --win --dir",
+    "dist": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  },
+  "devDependencies": {
+    "electron": "44.7.2",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.hapbeat.studio.desktop",
+    "productName": "Hapbeat Studio",
+    "artifactName": "HapbeatStudio-Setup-${version}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "helper/dist/hapbeat-helper",
+        "to": "helper"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hapbeat Studio",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "hapbeat",
+      "repo": "hapbeat-studio-desktop",
+      "releaseType": "draft"
+    }
+  }
+}
