@@ -11,8 +11,8 @@ Without an internet connection the app opens the last copy of Studio it saved (o
 
 ## First launch
 
-1. Run `HapbeatStudio-Setup-<version>.exe`. It installs for the current user (no administrator rights) and starts the app.
-2. If Windows SmartScreen says the app is unrecognised, choose **More info → Run anyway**.
+1. Download `HapbeatStudio-Setup-<version>.exe` from the [Releases](https://github.com/hapbeat/hapbeat-studio-desktop/releases) page and run it. It installs for the current user (no administrator rights) and starts the app.
+2. The installer is not code-signed. If Windows SmartScreen says the app is unrecognised, choose **More info → Run anyway** (only the first install; updates are downloaded by the app itself). On a PC where Windows 11 **Smart App Control** is on, unsigned apps cannot run at all: it has to be turned off in Windows Security → App & browser control.
 3. If Windows Firewall asks about `hapbeat-helper`, choose **Allow access**. Without it the app cannot find devices on the network.
 
 If a Helper installed with pipx is already running, the app uses it and does not start its own.

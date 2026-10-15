@@ -9,14 +9,7 @@ name: Release (Windows installer)
 #   workflow_dispatch    → build only (installer as a workflow artifact)
 #
 # The bundled helper is the PyPI version in helper/helper-version.txt.
-#
-# Code signing (Azure Artifact Signing) is used when the repository has these set:
-#   variables: AZURE_SIGNING_ENDPOINT (e.g. https://jpe.codesigning.azure.net),
-#              AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_PROFILE,
-#              AZURE_SIGNING_PUBLISHER (the certificate's subject CN = the legal company name)
-#   secrets:   AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET (an app registration
-#              with the "Artifact Signing Certificate Profile Signer" role on the profile)
-# Without them the installer is built unsigned (SmartScreen warns on first run).
+# The installer is not code-signed (DEC-094: no running cost for a small set of users).
 
 on:
   push:
@@ -68,27 +61,9 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          SIGN_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          SIGN_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
-          SIGN_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
-          SIGN_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
         run: |
-          $builderArgs = @('--win', 'nsis')
-          if ($env:SIGN_ACCOUNT -and $env:AZURE_CLIENT_SECRET) {
-            $builderArgs += @(
-              "-c.win.azureSignOptions.endpoint=$env:SIGN_ENDPOINT",
-              "-c.win.azureSignOptions.codeSigningAccountName=$env:SIGN_ACCOUNT",
-              "-c.win.azureSignOptions.certificateProfileName=$env:SIGN_PROFILE",
-              "-c.win.azureSignOptions.publisherName=$env:SIGN_PUBLISHER"
-            )
-          } else {
-            Write-Warning 'Code signing is not configured: the installer is unsigned.'
-          }
           $publish = if ("${{ github.ref }}".StartsWith('refs/tags/v')) { 'always' } else { 'never' }
-          npx electron-builder @builderArgs --publish $publish
+          npx electron-builder --win nsis --publish $publish
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - uses: actions/upload-artifact@v4
