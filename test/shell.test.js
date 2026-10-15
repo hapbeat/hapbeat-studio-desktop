@@ -109,6 +109,19 @@ test('serial grants persist and match by vendor, product and serial number', () 
   assert.ok(!reloaded.has({ ...hapbeat, serialNumber: 'CC:DD' }))
   assert.ok(!reloaded.has(bluetooth))
   assert.ok(!reloaded.has(cp210x))
+  // Windows: the permission check sees only the device instance id (as Electron 44 passes it)
+  const fromCheck = { device_instance_id: String.raw`USB\VID_303A&PID_1001&MI_00\9&1B3581DC&0&0000`, name: 'USB JTAG/serial debug unit' }
+  assert.ok(reloaded.has(fromCheck))
+  assert.ok(!reloaded.has({ device_instance_id: String.raw`USB\VID_10C4&PID_EA60\0001` }))
+  assert.ok(!reloaded.has({ name: 'no ids' }))
+})
+
+test('a Hapbeat chosen once (no serial number on Windows) is matched again by vendor and product', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hb-grants-')), 'grants.json')
+  const grants = new SerialGrants(file)
+  grants.add({ portId: 'x', portName: 'COM6', vendorId: '12346', productId: '4097', deviceInstanceId: String.raw`USB\VID_303A&PID_1001&MI_00\C&31002B7&0&0000` })
+  // the same board on another USB socket (another instance id) is still allowed
+  assert.ok(grants.has({ device_instance_id: String.raw`USB\VID_303A&PID_1001&MI_00\9&1B3581DC&0&0000` }))
 })
 
 test('helper start line gives the version', () => {

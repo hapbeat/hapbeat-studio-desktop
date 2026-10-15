@@ -1,7 +1,7 @@
 {
   "name": "hapbeat-studio-desktop",
   "productName": "Hapbeat Studio",
-  "version": "0.1.0-d1",
+  "version": "0.1.0-d2",
   "description": "Hapbeat Studio for Windows: the online Studio in an app window, with the Hapbeat Helper built in",
   "main": "src/main.js",
   "author": "Hapbeat <yus988@hapbeat.com>",

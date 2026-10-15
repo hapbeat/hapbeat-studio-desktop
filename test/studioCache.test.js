@@ -84,6 +84,21 @@ test('sync saves a complete build, reuses unchanged files, and keeps only the ne
   assert.deepEqual(fs.readdirSync(path.join(dir, 'cache')).sort(), [v2.manifest.id, 'current.json'].sort())
 })
 
+test('HTML listed inline is taken from the list, not downloaded (the CDN rewrites HTML)', async () => {
+  const dir = tmp()
+  const cache = new StudioCache({ cacheDir: path.join(dir, 'cache') })
+  const b = build({ 'index.html': '<p>page', 'assets/a.js': 'A' })
+  b.manifest.files.find((f) => f.path === 'index.html').inline = Buffer.from('<p>page').toString('base64')
+  const served = []
+  const rewritten = { manifest: source(b).manifest, file: async (rel) => { served.push(rel); return Buffer.from(rel === 'index.html' ? '<p>page<script>cdn</script>' : b.files[rel]) } }
+  await cache.sync(rewritten.manifest, rewritten.file)
+  assert.deepEqual(served, ['assets/a.js'])
+  assert.equal((await cache.lookup('/')).body.toString(), '<p>page')
+  const saved = JSON.parse(fs.readFileSync(path.join(cache.current().root, 'precache.json'), 'utf8'))
+  assert.ok(saved.files.every((f) => f.inline === undefined), 'the saved list does not repeat the inline content')
+  assert.throws(() => parseManifest({ ...b.manifest, files: [{ ...b.manifest.files[0], inline: 5 }] }))
+})
+
 test('a download that does not match the list keeps the previous copy', async () => {
   const dir = tmp()
   const cache = new StudioCache({ cacheDir: path.join(dir, 'cache') })

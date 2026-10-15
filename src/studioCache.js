@@ -70,7 +70,8 @@ function parseManifest(json) {
     throw new Error('invalid precache manifest')
   }
   for (const f of m.files) {
-    if (!f || !isSafeRelativePath(f.path) || !Number.isInteger(f.size) || f.size < 0 || !/^[0-9a-f]{64}$/.test(f.sha256)) {
+    if (!f || !isSafeRelativePath(f.path) || !Number.isInteger(f.size) || f.size < 0 || !/^[0-9a-f]{64}$/.test(f.sha256)
+      || (f.inline !== undefined && typeof f.inline !== 'string')) {
       throw new Error(`invalid precache entry: ${JSON.stringify(f)?.slice(0, 120)}`)
     }
   }
@@ -200,13 +201,16 @@ class StudioCache {
   }
 }
 
-/** Write every file of `manifest` into `dir` (checked against its size and sha256), then the manifest. */
+/**
+ * Write every file of `manifest` into `dir` (checked against its size and sha256), then
+ * the manifest. HTML comes inside the list (`inline`): the CDN rewrites HTML responses.
+ */
 async function writeBuild(dir, manifest, getFile) {
   fs.mkdirSync(dir, { recursive: true })
   const queue = [...manifest.files]
   const worker = async () => {
     for (let f = queue.shift(); f; f = queue.shift()) {
-      const data = await getFile(f)
+      const data = f.inline !== undefined ? Buffer.from(f.inline, 'base64') : await getFile(f)
       if (!data || data.length !== f.size || sha256(data) !== f.sha256) {
         throw new Error(`file does not match the precache list: ${f.path}`)
       }
@@ -216,7 +220,8 @@ async function writeBuild(dir, manifest, getFile) {
     }
   }
   await Promise.all(Array.from({ length: DOWNLOAD_CONCURRENCY }, worker))
-  fs.writeFileSync(path.join(dir, MANIFEST), JSON.stringify({ schema: 1, id: manifest.id, builtAt: manifest.builtAt, files: manifest.files }))
+  const files = manifest.files.map(({ inline, ...f }) => f) // the files are on disk now
+  fs.writeFileSync(path.join(dir, MANIFEST), JSON.stringify({ schema: 1, id: manifest.id, builtAt: manifest.builtAt, files }))
 }
 
 /**

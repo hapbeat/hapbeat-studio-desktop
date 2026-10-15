@@ -23,13 +23,24 @@ function usbId(value) {
   return Number.isFinite(n) ? n : null
 }
 
-/** What identifies a port across launches: vendor, product and (when the device has one) serial number. */
+/**
+ * What identifies a port across launches: vendor, product and (when the device has one)
+ * serial number. The chooser's ports carry vendorId / productId (decimal strings); the
+ * device permission check on Windows gets only `device_instance_id`
+ * ("USB\VID_303A&PID_1001&MI_00\..."), so the ids are read from that too.
+ */
 function portKey(port) {
-  return {
-    vendorId: usbId(port.vendorId),
-    productId: usbId(port.productId),
-    serialNumber: port.serialNumber || null,
+  let vendorId = usbId(port.vendorId)
+  let productId = usbId(port.productId)
+  if (vendorId === null || productId === null) {
+    const instance = port.deviceInstanceId || port.device_instance_id || ''
+    const m = /VID_([0-9A-F]{4})&PID_([0-9A-F]{4})/i.exec(instance)
+    if (m) {
+      vendorId = parseInt(m[1], 16)
+      productId = parseInt(m[2], 16)
+    }
   }
+  return { vendorId, productId, serialNumber: port.serialNumber || null }
 }
 
 function sameDevice(a, b) {
