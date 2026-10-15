@@ -3,15 +3,18 @@
 //
 // The window shows the online Studio (studio.hapbeat.com), loaded on every launch,
 // so a Studio deploy — screens, templates, firmware list — reaches the app without
-// reinstalling it. The app adds only what a browser cannot do by itself:
+// reinstalling it. Without a network it opens the last saved copy of Studio
+// (studioCache.js). The app adds only what a browser cannot do by itself:
 //   - the Hapbeat Helper, bundled and started with the app (no Python / pipx)
 //   - a chooser for USB serial ports (Web Serial)
 //   - updates of the app itself (when the bundled helper or this shell changes)
 //   - what the PC plays (Windows loopback) for Studio's "PC sound → Hapbeat" button
 
+const fs = require('node:fs')
 const path = require('node:path')
-const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain, net, session, shell } = require('electron')
 const { HelperProcess, DEFAULT_PORT } = require('./helper')
+const { StudioCache, StudioServer, MANIFEST } = require('./studioCache')
 const { SerialGrants, choosePort } = require('./serial')
 const { resolveStudioUrl, isStudioOrigin, isExternalWebUrl } = require('./urls')
 const { isDisplayCaptureRequest, systemAudioGrant } = require('./systemAudio')
@@ -29,9 +32,17 @@ const STUDIO_PERMISSIONS = new Set([
   'local-network-access', 'local-network', 'loopback-network',
 ])
 
+// Development checks run with their own data folder (fresh cache, no single-instance clash).
+if (!app.isPackaged && process.env.HAPBEAT_DESKTOP_USER_DATA) {
+  app.setPath('userData', process.env.HAPBEAT_DESKTOP_USER_DATA)
+}
+
 const studioUrl = resolveStudioUrl(process.env, { packaged: app.isPackaged })
 let mainWindow = null
 let helper = null
+let studioCache = null
+let studioServer = null
+let studioCopySynced = false
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -42,6 +53,29 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.focus()
   })
   app.whenReady().then(onReady)
+}
+
+/** One line into logs/app.log (things the user never sees but support may need). */
+function appLog(line) {
+  try {
+    const file = path.join(app.getPath('logs'), 'app.log')
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    if (fs.existsSync(file) && fs.statSync(file).size > 1024 * 1024) fs.renameSync(file, `${file}.old`)
+    fs.appendFileSync(file, `[${new Date().toISOString()}] ${line}\n`)
+  } catch {
+    /* logging must never break the app */
+  }
+}
+
+function broadcast(channel, payload) {
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send(channel, payload)
+}
+
+function bundledSnapshotDir() {
+  // Packaged: <install>/resources/studio-snapshot/. Development: studio-snapshot/ of this repo.
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'studio-snapshot')
+    : path.join(__dirname, '..', 'studio-snapshot')
 }
 
 function bundledHelperPath() {
@@ -58,10 +92,19 @@ async function onReady() {
 
   const port = Number(process.env.HAPBEAT_HELPER_PORT) || DEFAULT_PORT
   helper = new HelperProcess({ exePath: bundledHelperPath(), logDir: app.getPath('logs'), port })
-  helper.on('status', (status) => {
-    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('desktop:helper-status', status)
-  })
+  helper.on('status', (status) => broadcast('desktop:helper-status', status))
   void helper.start()
+
+  studioCache = new StudioCache({
+    cacheDir: path.join(app.getPath('userData'), 'studio-cache'),
+    bundledDir: bundledSnapshotDir(),
+  })
+  studioServer = new StudioServer({
+    cache: studioCache,
+    origin: studioUrl.origin,
+    fetch: (request, init) => net.fetch(request, { ...init, bypassCustomProtocolHandlers: true }),
+  })
+  studioServer.on('status', (status) => broadcast('desktop:studio-status', status))
 
   setupSession(session.defaultSession)
   setupIpc()
@@ -72,6 +115,10 @@ async function onReady() {
 
 function setupSession(ses) {
   const grants = new SerialGrants(path.join(app.getPath('userData'), 'serial-grants.json'))
+
+  // Every request of the window to Studio's origin goes through the saved-copy
+  // fallback; other origins pass straight to the network.
+  ses.protocol.handle(studioUrl.protocol.slice(0, -1), (request) => studioServer.handle(request))
 
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
     const origin = details?.requestingUrl || webContents?.getURL()
@@ -115,11 +162,37 @@ function setupIpc() {
     appVersion: app.getVersion(),
     platform: process.platform,
     helper: helper.status(),
+    studio: studioServer.status(),
   })))
+  ipcMain.handle('desktop:studio-status', guard(() => studioServer.status()))
   ipcMain.handle('desktop:helper-status', guard(() => helper.status()))
   ipcMain.handle('desktop:helper-restart', guard(() => helper.restart()))
   ipcMain.handle('desktop:open-log-folder', guard(() => shell.openPath(app.getPath('logs'))))
   ipcMain.handle('desktop:check-updates', guard(() => updater.checkForUpdates()))
+}
+
+/**
+ * After an online page load, keep a copy of the Studio build now deployed (once per
+ * run; a failed attempt is retried on the next load). Studio lists its files in
+ * /precache.json; a development server without it is skipped quietly.
+ */
+function saveStudioCopy() {
+  if (studioCopySynced || studioServer.offline) return
+  const get = async (rel) => {
+    const url = `${studioUrl.origin}/${rel.split('/').map(encodeURIComponent).join('/')}`
+    const res = await net.fetch(url, { bypassCustomProtocolHandlers: true, cache: 'no-store' })
+    if (!res.ok) throw new Error(`${res.status} ${rel}`)
+    return Buffer.from(await res.arrayBuffer())
+  }
+  studioCache.sync(async () => (await get(MANIFEST)).toString('utf8'), get)
+    .then((result) => {
+      studioCopySynced = true
+      if (result.updated) {
+        appLog(`saved Studio build ${result.id}`)
+        broadcast('desktop:studio-status', studioServer.status())
+      }
+    })
+    .catch((err) => appLog(`could not save a copy of Studio: ${err.message}`))
 }
 
 function showOffline(error) {
@@ -150,16 +223,26 @@ function createWindow() {
   // Development check runs keep the PC silent (HAPBEAT_DESKTOP_MUTE=1).
   if (process.env.HAPBEAT_DESKTOP_MUTE === '1') mainWindow.webContents.setAudioMuted(true)
 
+  // Reached only when there is no saved copy either (studioCache.js answers otherwise).
   mainWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
     // -3 = aborted (a navigation replaced this one), not a failure.
     if (!isMainFrame || code === -3 || !isStudioOrigin(url, studioUrl)) return
     showOffline(`${description} (${code})`)
   })
-  // A network that redirects elsewhere (a hotel / venue sign-in page) is not Studio.
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (isStudioOrigin(mainWindow?.webContents.getURL(), studioUrl)) saveStudioCopy()
+  })
+  // A network that redirects elsewhere (a hotel / venue sign-in page) is not Studio:
+  // open the saved copy instead (or the offline page when there is none).
   mainWindow.webContents.on('will-redirect', (details) => {
     if (!details.isMainFrame || isStudioOrigin(details.url, studioUrl)) return
     details.preventDefault()
-    showOffline(new URL(details.url).host)
+    if (studioCache.current()) {
+      studioServer.useCopyForNextLoad()
+      void mainWindow.loadURL(studioUrl.href)
+    } else {
+      showOffline(new URL(details.url).host)
+    }
   })
   // Closing the main window ends the app, pop-outs included.
   mainWindow.on('closed', () => {

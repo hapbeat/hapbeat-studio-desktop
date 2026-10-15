@@ -7,13 +7,13 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('hapbeatDesktop', {
   shell: 'electron',
   /** Raised when this API changes; Studio checks it before using newer calls. */
-  apiVersion: 2,
+  apiVersion: 3,
   /**
    * (2) getDisplayMedia({ video, audio }) from a click returns what the PC plays
    * (system audio, no picker) plus Studio's own page as the video track to stop.
    */
   systemAudio: process.platform === 'win32',
-  /** { appVersion, platform, helper } */
+  /** { appVersion, platform, helper, studio } */
   getInfo: () => ipcRenderer.invoke('desktop:info'),
   helper: {
     /** { state, source, version, port, error } */
@@ -25,6 +25,18 @@ contextBridge.exposeInMainWorld('hapbeatDesktop', {
       const listener = (_event, status) => callback(status)
       ipcRenderer.on('desktop:helper-status', listener)
       return () => ipcRenderer.removeListener('desktop:helper-status', listener)
+    },
+  },
+  /**
+   * (3) Where Studio's page came from: { mode: 'online' | 'offline', copy: { id, savedAt,
+   * source: 'saved' | 'bundled' } | null } — offline = the saved copy, as no network answered.
+   */
+  studio: {
+    status: () => ipcRenderer.invoke('desktop:studio-status'),
+    onStatus: (callback) => {
+      const listener = (_event, status) => callback(status)
+      ipcRenderer.on('desktop:studio-status', listener)
+      return () => ipcRenderer.removeListener('desktop:studio-status', listener)
     },
   },
   /** { state: 'dev' | 'none' | 'downloading' | 'downloaded' | 'error', version?, error? } */

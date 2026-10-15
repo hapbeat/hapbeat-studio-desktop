@@ -7,7 +7,7 @@ Hapbeat Studio as a Windows app. Install it and double-click: no Python, no comm
 - The app opens with Kit, UI and Manage. "Show all features" in the Helper panel (top right) adds the editor and the other tabs.
 - The app updates itself when a new version is released.
 
-An internet connection is needed to open the app.
+Without an internet connection the app opens the last copy of Studio it saved (or the copy shipped in the installer), and updates it the next time it is online. Offline there is no firmware list.
 
 ## First launch
 
@@ -24,6 +24,7 @@ Requires Node.js 22 and Python 3.12 (Windows).
 ```powershell
 npm ci
 npm run build:helper          # bundled helper from PyPI (helper/helper-version.txt) → helper/dist/
+npm run build:snapshot        # Studio copy for offline use from studio.hapbeat.com → studio-snapshot/
 npm start                     # the app against studio.hapbeat.com
 $env:HAPBEAT_STUDIO_URL = "http://localhost:5173/"; npm start   # against a local Studio dev server
 npm test
@@ -31,7 +32,9 @@ npm run dist                  # installer → release/
 ```
 
 - `npm run build:helper -- -Source ..\hapbeat-helper` bundles a local helper checkout instead of the PyPI release.
+- `npm run build:snapshot -- --dist ..\hapbeat-studio\dist` takes the offline copy from a local Studio build instead.
 - `HAPBEAT_HELPER_PORT` starts the bundled helper on another port (checks only; Studio connects to 7703).
+- `HAPBEAT_DESKTOP_USER_DATA` gives a development run its own data folder (fresh saved copy, ports, settings).
 - Studio shows its desktop layout when the page is opened with `?shell=desktop` (the app does this) or when `window.hapbeatDesktop` exists (the app's preload).
 
 ## Releasing

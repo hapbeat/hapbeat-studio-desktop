@@ -12,6 +12,7 @@
     "test": "node --test test/*.test.js",
     "build:helper": "powershell -NoProfile -ExecutionPolicy Bypass -File helper/build-helper.ps1",
     "build:icon": "electron scripts/make-icon.cjs",
+    "build:snapshot": "node scripts/fetch-studio-snapshot.mjs",
     "dist:dir": "electron-builder --win --dir",
     "dist": "electron-builder --win nsis"
   },
@@ -39,6 +40,10 @@
       {
         "from": "helper/dist/hapbeat-helper",
         "to": "helper"
+      },
+      {
+        "from": "studio-snapshot",
+        "to": "studio-snapshot"
       }
     ],
     "win": {
