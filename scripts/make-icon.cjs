@@ -1,16 +1,13 @@
 'use strict'
-// Renders Studio's favicon (the same artwork) to build/icon.png at 256 px, the size
-// electron-builder needs to make the Windows .ico. Run: npm run build:icon
+// Renders build/icon.svg (the same artwork as Studio's favicon) to build/icon.png at
+// 256 px, the size electron-builder needs to make the Windows .ico. Run: npm run build:icon
 const fs = require('node:fs')
 const path = require('node:path')
 const { app, BrowserWindow } = require('electron')
 
 const SIZE = 256
-const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${SIZE}" height="${SIZE}" fill="none">
-  <rect width="64" height="64" rx="12" fill="#1a1a2e"/>
-  <path d="M16 40 Q24 16 32 32 Q40 48 48 24" stroke="#7c5cbf" stroke-width="5" stroke-linecap="round" fill="none"/>
-  <path d="M16 40 Q24 16 32 32 Q40 48 48 24" stroke="#a78bfa" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.6" stroke-dasharray="4 4"/>
-</svg>`
+const SVG = fs.readFileSync(path.join(__dirname, '..', 'build', 'icon.svg'), 'utf8')
+  .replace('<svg ', `<svg width="${SIZE}" height="${SIZE}" `)
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({

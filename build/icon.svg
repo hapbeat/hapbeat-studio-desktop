@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Same artwork as Studio's favicon (hapbeat-studio public/favicon.svg);
+       npm run build:icon makes icon.png. -->
+  <rect width="64" height="64" rx="12" fill="#1a1a2e"/>
+  <path d="M7 32 H16 L19 13 L31 50 L40 32 H57" fill="none" stroke="#7c5cbf" stroke-width="5" stroke-linejoin="miter" stroke-miterlimit="5" stroke-linecap="round"/>
+  <path d="M7 32 H16 L19 13 L31 50 L40 32 H57" fill="none" stroke="#a78bfa" stroke-width="2.4" stroke-linejoin="miter" stroke-miterlimit="5" stroke-linecap="round"/>
+</svg>
