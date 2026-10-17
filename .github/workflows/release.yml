@@ -57,6 +57,22 @@ jobs:
       - name: Studio copy for offline use
         run: node scripts/fetch-studio-snapshot.mjs
 
+      # electron-builder uploads its files in parallel and, when no release exists yet,
+      # each upload creates one: v0.1.0 ended up as two drafts (installer + latest.yml
+      # in one, the blockmap in the other). Create the draft first so all go into it.
+      - name: Create the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ github.ref_name }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            $version = "${{ github.ref_name }}".TrimStart('v')
+            gh release create "${{ github.ref_name }}" --draft --title $version --notes "Hapbeat Studio for Windows $version"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
       - name: Build installer (draft release on tags)
         shell: pwsh
         env:
