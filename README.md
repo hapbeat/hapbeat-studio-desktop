@@ -4,7 +4,7 @@ Hapbeat Studio as a Windows app. Install it and double-click: no Python, no comm
 
 - The screens are the online Hapbeat Studio (<https://studio.hapbeat.com>), loaded at every launch. New Studio features, templates and firmware appear in the app as soon as they are on the web.
 - The Hapbeat Helper (the part that talks to the devices on your network) is built in and starts and stops with the app.
-- The app opens with Kit, UI and Manage. "Show all features" in the Helper panel (top right) adds the editor and the other tabs.
+- The app opens with Kit, UI and Manage. "Show all features" in the panel opened from "Connection" (top right) adds the editor and scene tabs. Docs (Japanese: <https://devtools.hapbeat.com/docs/tools/studio/desktop-app/>, English: <https://devtools.hapbeat.com/en/docs/tools/studio/desktop-app/>).
 - The app updates itself when a new version is released.
 
 Without an internet connection the app opens the last copy of Studio it saved (or the copy shipped in the installer), and updates it the next time it is online. Offline there is no firmware list.
