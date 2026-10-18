@@ -9,7 +9,7 @@ const path = require('node:path')
 const { resolveStudioUrl, isStudioOrigin, isExternalWebUrl } = require('../src/urls')
 const { SerialGrants, choosePort, sortPorts, usbId, isHapbeatPort } = require('../src/serial')
 const { HelperProcess, isPortOpen, parseStartLine } = require('../src/helper')
-const { isDisplayCaptureRequest, systemAudioGrant } = require('../src/systemAudio')
+const { isAudioInputCheck, isAudioInputRequest, isDisplayCaptureRequest, systemAudioGrant } = require('../src/systemAudio')
 
 test('Studio URL: production by default, marked as the desktop shell', () => {
   const url = resolveStudioUrl({})
@@ -65,6 +65,20 @@ test('PC sound: system audio only for a click on the Studio page, on Windows', (
   assert.ok(!isDisplayCaptureRequest('media', { ...media, isMainFrame: false }, 'win32'))
   assert.ok(!isDisplayCaptureRequest('media', {}, 'win32'))
   assert.ok(!isDisplayCaptureRequest('geolocation', media, 'win32'))
+})
+
+test('PC sound: recording devices (audio only) for the Studio page, and their names', () => {
+  const audio = { isMainFrame: true, mediaTypes: ['audio'], requestingUrl: 'https://studio.hapbeat.com/' }
+  assert.ok(isAudioInputRequest('media', audio))
+  assert.ok(!isAudioInputRequest('media', { ...audio, mediaTypes: ['video'] }))
+  assert.ok(!isAudioInputRequest('media', { ...audio, mediaTypes: ['audio', 'video'] }))
+  assert.ok(!isAudioInputRequest('media', { ...audio, mediaTypes: [] })) // that one is getDisplayMedia's
+  assert.ok(!isAudioInputRequest('media', { ...audio, isMainFrame: false }))
+  assert.ok(!isAudioInputRequest('geolocation', audio))
+  assert.ok(isAudioInputCheck('media', { mediaType: 'audio' }))
+  assert.ok(!isAudioInputCheck('media', { mediaType: 'video' }))
+  assert.ok(!isAudioInputCheck('media', {}))
+  assert.ok(!isAudioInputCheck('notifications', { mediaType: 'audio' }))
 })
 
 test('USB ids: decimal strings, hex and numbers', () => {

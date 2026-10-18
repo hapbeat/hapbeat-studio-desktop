@@ -17,7 +17,7 @@ const { HelperProcess, DEFAULT_PORT } = require('./helper')
 const { StudioCache, StudioServer, MANIFEST } = require('./studioCache')
 const { SerialGrants, choosePort } = require('./serial')
 const { resolveStudioUrl, isStudioOrigin, isExternalWebUrl } = require('./urls')
-const { isDisplayCaptureRequest, systemAudioGrant } = require('./systemAudio')
+const { isAudioInputCheck, isAudioInputRequest, isDisplayCaptureRequest, systemAudioGrant } = require('./systemAudio')
 const { setLocale, t } = require('./i18n')
 const updater = require('./updater')
 
@@ -123,10 +123,13 @@ function setupSession(ses) {
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
     const origin = details?.requestingUrl || webContents?.getURL()
     callback(isStudioOrigin(origin, studioUrl)
-      && (STUDIO_PERMISSIONS.has(permission) || isDisplayCaptureRequest(permission, details)))
+      && (STUDIO_PERMISSIONS.has(permission)
+        || isDisplayCaptureRequest(permission, details)
+        || isAudioInputRequest(permission, details)))
   })
-  ses.setPermissionCheckHandler((_webContents, permission, requestingOrigin) =>
-    isStudioOrigin(requestingOrigin, studioUrl) && STUDIO_PERMISSIONS.has(permission))
+  ses.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) =>
+    isStudioOrigin(requestingOrigin, studioUrl)
+    && (STUDIO_PERMISSIONS.has(permission) || isAudioInputCheck(permission, details)))
 
   // Web Serial: ports chosen once stay usable across launches (as in Chrome).
   ses.setDevicePermissionHandler((details) =>

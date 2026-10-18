@@ -7,12 +7,18 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('hapbeatDesktop', {
   shell: 'electron',
   /** Raised when this API changes; Studio checks it before using newer calls. */
-  apiVersion: 3,
+  apiVersion: 4,
   /**
    * (2) getDisplayMedia({ video, audio }) from a click returns what the PC plays
    * (system audio, no picker) plus Studio's own page as the video track to stop.
    */
   systemAudio: process.platform === 'win32',
+  /**
+   * (4) getUserMedia({ audio }) opens a recording device (CABLE Output, Voicemeeter Out,
+   * Stereo Mix, microphones) without a prompt, and enumerateDevices names the devices:
+   * PC sound from a chosen source when the loopback of the default device is silent.
+   */
+  audioInput: true,
   /** { appVersion, platform, helper, studio } */
   getInfo: () => ipcRenderer.invoke('desktop:info'),
   helper: {
