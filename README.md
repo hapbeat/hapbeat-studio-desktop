@@ -28,7 +28,7 @@ npm run build:snapshot        # Studio copy for offline use from studio.hapbeat.
 npm start                     # the app against studio.hapbeat.com
 $env:HAPBEAT_STUDIO_URL = "http://localhost:5173/"; npm start   # against a local Studio dev server
 npm test
-npm run dist                  # installer → release/
+npm run dist                  # installer → hapbeat-studio-desktop-release/
 ```
 
 - `npm run build:helper -- -Source ..\hapbeat-helper` bundles a local helper checkout instead of the PyPI release.

@@ -1,5 +1,5 @@
 node_modules/
-release/
+hapbeat-studio-desktop-release/
 helper/.venv/
 helper/build/
 helper/dist/

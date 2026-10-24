@@ -28,7 +28,7 @@
     "productName": "Hapbeat Studio",
     "artifactName": "HapbeatStudio-Setup-${version}.${ext}",
     "directories": {
-      "output": "release",
+      "output": "hapbeat-studio-desktop-release",
       "buildResources": "build"
     },
     "files": [
